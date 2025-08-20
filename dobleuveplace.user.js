@@ -1,19 +1,19 @@
 // ==UserScript==
 // @name         dobreuveplace
 // @namespace    https://github.com/snoozedDev
-// @version      2025-08-20
+// @version      0.0.1
 // @description  helper panel & button
 // @author       snoozedDev
 // @license      MPL-2.0
 // @supportURL   https://discord.gg/tpeBPy46hf
 // @homepageURL  https://github.com/snoozedDev/dobreuveplace
-// @match        https://wplace.live/*
+// @run-at       document-start
+// @match        *://*.wplace.live/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/snoozedDev/dobreuveplace/main/dobleuveplace.user.js
 // @downloadURL  https://raw.githubusercontent.com/snoozedDev/dobreuveplace/main/dobleuveplace.user.js
 // ==/UserScript==
-
 
 let lastMe = {
     data: {
