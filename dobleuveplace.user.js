@@ -7,7 +7,7 @@
 // @license      MPL-2.0
 // @supportURL   https://discord.gg/tpeBPy46hf
 // @homepageURL  https://github.com/snoozedDev/dobreuveplace
-// @match        https://wplace.live/
+// @match        https://wplace.live/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/snoozedDev/dobreuveplace/main/dobleuveplace.user.js
