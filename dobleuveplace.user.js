@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         dobreuveplace
 // @namespace    https://github.com/snoozedDev
-// @version      0.0.1
+// @version      0.0.2
 // @description  helper panel & button
 // @author       snoozedDev
 // @license      MPL-2.0
@@ -29,6 +29,120 @@ let lastMe = {
 
 const UPGRADE_COST = 500;
 const UPGRADE_AMOUNT = 5;
+
+// Request interceptor - monitor network requests for URLs containing "thing"
+(function() {
+    'use strict';
+    
+    const MONITOR_KEYWORD = 'thing';
+    
+    // Helper functions
+    const shouldMonitorUrl = (url) => {
+        const urlString = typeof url === 'string' ? url : url.url || url.toString();
+        return urlString.toLowerCase().includes(MONITOR_KEYWORD);
+    };
+    
+    const tryParseJSON = (text) => {
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            return null;
+        }
+    };
+    
+    const logRequest = (type, urlString, options = null) => {
+        console.log(`🔍 [REQUEST INTERCEPTED] ${type} request with "${MONITOR_KEYWORD}" detected:`);
+        console.log('   URL:', urlString);
+        if (options) {
+            if (options.method) {
+                console.log('   Method:', options.method);
+            } else {
+                console.log('   Options:', options);
+            }
+        }
+        console.log('   Timestamp:', new Date().toISOString());
+    };
+    
+    const logResponse = (type, status, statusText, contentType, jsonData) => {
+        console.log(`📥 [RESPONSE INTERCEPTED] ${type} JSON response for "${MONITOR_KEYWORD}" request:`);
+        console.log('   Status:', status, statusText);
+        console.log('   Content-Type:', contentType);
+        console.log('   Response Data:', jsonData);
+        console.log('   Timestamp:', new Date().toISOString());
+    };
+    
+    const logError = (type, error) => {
+        console.log(`⚠️ [${type} ERROR] Failed to parse response for "${MONITOR_KEYWORD}" request:`, error);
+    };
+    
+    const handleJsonResponse = (type, status, statusText, contentType, responseText) => {
+        try {
+            if (contentType && contentType.includes('application/json')) {
+                const jsonData = tryParseJSON(responseText);
+                if (jsonData !== null) {
+                    logResponse(type, status, statusText, contentType, jsonData);
+                }
+            }
+        } catch (error) {
+            logError('RESPONSE', error);
+        }
+    };
+    
+    // Intercept fetch API
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        const url = args[0];
+        const urlString = typeof url === 'string' ? url : url.url || url.toString();
+        const shouldLog = shouldMonitorUrl(url);
+        
+        if (shouldLog) {
+            logRequest('fetch', urlString, args[1] || 'none');
+        }
+        
+        const fetchPromise = originalFetch.apply(this, args);
+        
+        if (shouldLog) {
+            return fetchPromise.then(async (response) => {
+                const responseClone = response.clone();
+                
+                try {
+                    const contentType = response.headers.get('content-type');
+                    const responseText = await responseClone.text();
+                    handleJsonResponse('fetch', response.status, response.statusText, contentType, responseText);
+                } catch (error) {
+                    logError('RESPONSE', error);
+                }
+                
+                return response;
+            }).catch((error) => {
+                console.log(`❌ [FETCH ERROR] Request with "${MONITOR_KEYWORD}" failed:`, error);
+                throw error;
+            });
+        }
+        
+        return fetchPromise;
+    };
+    
+    // Intercept XMLHttpRequest
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, ...args) {
+        const urlString = url.toString();
+        const shouldLog = shouldMonitorUrl(url);
+        
+        if (shouldLog) {
+            logRequest('XMLHttpRequest', urlString, { method });
+            
+            this.addEventListener('load', () => {
+                const contentType = this.getResponseHeader('content-type');
+                handleJsonResponse('XMLHttpRequest', this.status, this.statusText, contentType, this.responseText);
+            });
+        }
+        
+        return originalXHROpen.call(this, method, url, ...args);
+    };
+    
+    console.log(`🚀 Request interceptor initialized - monitoring for URLs containing "${MONITOR_KEYWORD}" (requests + JSON responses)`);
+})();
 
 const getAmountOfChargesToBuy = () => {
     const { data: { droplets } } = lastMe;
@@ -104,13 +218,14 @@ const shouldRefresh = () => {
     }
     
     const msUntilFull = getMSUntilFull();
-    if (msUntilFull <= 0) {
+    const lastMeFull = lastMe.data.charges.count >= lastMe.data.charges.max;
+    if (msUntilFull <= 0 && !lastMeFull) {
         return true;
     }
     return false;
 }
 
-const UI_REFRESH_INTERVAL = 1000;
+const UI_REFRESH_INTERVAL = 500;
 let lastUIRefresh = 0;
 
 const shouldRefreshUI = () => {
@@ -143,17 +258,40 @@ const refreshUI = () => {
 
     // Calculate how many +5 max charge upgrades can be bought
     const upgradesAvailable = getAmountOfChargesToBuy();
+    const { data: { charges: { count, max } } } = lastMe;
+    const isAtMaxCharges = count >= max;
     
+    // Always show upgrade info and button when at max charges, or when upgrades are available
     if (upgradesAvailable > 0) {
-        infoTexts.push(`Can buy +${upgradesAvailable * UPGRADE_AMOUNT} max charge upgrades, (${upgradesAvailable * UPGRADE_COST} droplets)`);
+        infoTexts.push(`Can buy +${upgradesAvailable * UPGRADE_AMOUNT} max charge upgrades (${upgradesAvailable * UPGRADE_COST} droplets)`);
         
         // Show and update the button
         if (upgradeButton) {
             upgradeButton.style.display = 'block';
             upgradeButton.textContent = `Buy max charges`;
+            upgradeButton.disabled = false;
+            upgradeButton.style.opacity = '1';
+            upgradeButton.style.cursor = 'pointer';
+        }
+    } else if (isAtMaxCharges) {
+        // Show upgrade info even when can't afford it, but user is at max charges
+        const dropletsNeeded = UPGRADE_COST - (lastMe.data.droplets % UPGRADE_COST);
+        if (lastMe.data.droplets < UPGRADE_COST) {
+            infoTexts.push(`+${UPGRADE_AMOUNT} max charge upgrade costs ${UPGRADE_COST} droplets (need ${dropletsNeeded} more)`);
+        } else {
+            infoTexts.push(`+${UPGRADE_AMOUNT} max charge upgrade costs ${UPGRADE_COST} droplets`);
+        }
+        
+        // Show disabled button when at max but can't afford upgrades
+        if (upgradeButton) {
+            upgradeButton.style.display = 'block';
+            upgradeButton.textContent = `Buy max charges`;
+            upgradeButton.disabled = true;
+            upgradeButton.style.opacity = '0.6';
+            upgradeButton.style.cursor = 'not-allowed';
         }
     } else {
-        // Hide the button if no upgrades available
+        // Hide the button if not at max and no upgrades available
         if (upgradeButton) {
             upgradeButton.style.display = 'none';
         }
@@ -210,6 +348,7 @@ const insertInfoPanel = () => {
     
     // Add hover and active effects
     shortcutButton.addEventListener('mouseenter', () => {
+        if (shortcutButton.disabled) return;
         shortcutButton.style.backgroundColor = 'black';
         shortcutButton.style.color = 'white';
         shortcutButton.style.transform = 'translateY(-1px)';
@@ -217,6 +356,7 @@ const insertInfoPanel = () => {
     });
     
     shortcutButton.addEventListener('mouseleave', () => {
+        if (shortcutButton.disabled) return;
         shortcutButton.style.backgroundColor = 'white';
         shortcutButton.style.color = 'black';
         shortcutButton.style.transform = 'translateY(0)';
@@ -224,14 +364,19 @@ const insertInfoPanel = () => {
     });
     
     shortcutButton.addEventListener('mousedown', () => {
+        if (shortcutButton.disabled) return;
         shortcutButton.style.transform = 'translateY(1px)';
     });
     
     shortcutButton.addEventListener('mouseup', () => {
+        if (shortcutButton.disabled) return;
         shortcutButton.style.transform = 'translateY(-1px)';
     });
     
     shortcutButton.addEventListener('click', () => {
+        // Don't process clicks if button is disabled
+        if (shortcutButton.disabled) return;
+        
         const amount = getAmountOfChargesToBuy();
         if (amount > 0) buyUpgrade(amount);
     });
@@ -254,15 +399,9 @@ const insertInfoPanel = () => {
     }
     
     while (true) {
-        if (shouldRefresh()) {
-            try {
-                await refreshMe();
-            } catch (error) {
-                console.error('Failed to refresh data:', error);
-            }
-        }
+        if (shouldRefresh()) await refreshMe()
         if (shouldRefreshUI()) refreshUI();
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, UI_REFRESH_INTERVAL));
     }
 }
 )();
