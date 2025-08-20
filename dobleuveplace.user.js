@@ -1,9 +1,12 @@
 // ==UserScript==
-// @name         New Userscript
-// @namespace    http://tampermonkey.net/
+// @name         dobreuveplace
+// @namespace    https://github.com/snoozedDev
 // @version      2025-08-20
-// @description  try to take over the world!
-// @author       You
+// @description  helper panel & button
+// @author       snoozedDev
+// @license      MPL-2.0
+// @supportURL   https://discord.gg/tpeBPy46hf
+// @homepageURL  https://github.com/snoozedDev/dobreuveplace
 // @match        https://wplace.live/
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        none
